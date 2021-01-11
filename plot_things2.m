@@ -9,10 +9,11 @@ weights = 0:1:10;
 omega = 0:0.1:20;
 expos = -3:0.05:3;
 Ts = 10.^expos; %0.1:0.5:1000;
+
 covar_T = NaN(length(weights), length(Ts));
+psd_T = NaN(length(weights), length(Ts));
 
 var_T_stripped = NaN(length(weights), length(Ts));
-psd_T = NaN(length(weights), length(Ts));
 integral_vals = NaN(length(weights), length(Ts));
 M_numint = NaN(1, length(weights));
 numerical_psds = NaN(length(weights), length(omega));
@@ -22,17 +23,20 @@ indep_var = weights;
 num_vars = length(indep_var);
 indep_xlabel = 'weights';
 
-suffix = ['_2MC_z0_vs_', indep_xlabel]; % tack on at the end of filenames
+suffix = ['_2MC_z1_all_', indep_xlabel]; % tack on at the end of filenames
 
 % some booleans
 normalize_xcorr = 0; % if we want the integral to all be 1
 make_poiss = 0;
 
 % other constants
-zeta_0 = 0; % noise inputs to GC, zero in the model
+zeta_0 = 1; % noise inputs to GC, zero in the model
 tau = 1;
 xi_1_0 = 1;
 xi_2_0 = 1;
+if xi_1_0==xi_2_0
+    xi_0 = xi_1_0;
+end
 T = 10;
 
 fack = figure(2);
@@ -42,8 +46,14 @@ for w_i = 1:num_vars
     %% MAY NEED TO BE ADJUSTED, depending on what the var is
     w = indep_var(w_i);
     
+    % this is the OFF-DIAGONAL CROSS-CORR term.
     syms M(x) %indep variable is omega
     M(x) = (-w*xi_1_0*(1-x.^2*tau+w)-w*xi_2_0*(1-x.^2*tau+w)+w.^2*zeta_0*(1+x.^2))/...
+        ((1+x.^2)*((1+x.^2)*(1+x.^2*tau^2)+4*w*(1-x.^2*tau)+4*w.^2));
+    
+    % this is the DIAGONAL PSD term.
+    syms P(x)
+    P(x) = xi_0*((1+x.^2)*(1+x.^2.*tau^2)+2*w*(1-x.^2*tau)+2*w^2 + w^2*zeta_0*(1+x.^2))./...
         ((1+x.^2)*((1+x.^2)*(1+x.^2*tau^2)+4*w*(1-x.^2*tau)+4*w.^2));
     
     if normalize_xcorr
@@ -55,15 +65,15 @@ for w_i = 1:num_vars
         numerical_psds(w_i, :) = M(omega);
     end
     
-    subplot(2, 1, 1)
+    subplot(2, 2, 1)
     % this if loop nonsense is necessary becaues i only want to 
     % label the first and last 
     if w_i==1
-            w_1 = plot(omega, numerical_psds(w_i, :), 'color', colorz(w_i, :));
-        elseif w_i == length(weights)
-            w_end = plot(omega, numerical_psds(w_i, :), 'color', colorz(w_i, :));
-        else
-            plot(omega, numerical_psds(w_i, :), 'color', colorz(w_i, :));
+        w_1 = plot(omega, numerical_psds(w_i, :), 'color', colorz(w_i, :));
+    elseif w_i == length(weights)
+        w_end = plot(omega, numerical_psds(w_i, :), 'color', colorz(w_i, :));
+    else
+        plot(omega, numerical_psds(w_i, :), 'color', colorz(w_i, :));
     end
     hold on
     
@@ -73,53 +83,92 @@ for w_i = 1:num_vars
         % with respect to omega
         % where
         integrand = @(x, zeta, t, xi1, xi2, we, bin) ...
-            2*((-we.*xi1.*(2-2*x.^2*t+2*we)-we.*xi2.*(2-2.*x.^2.*t+2.*we)+2.*we.^2.*zeta.*(1+x.^2))./...
+            ((-we.*xi1.*(1-x.^2*t+we)-we.*xi2.*(1-x.^2.*t+we)+we.^2.*zeta.*(1+x.^2))./...
         ((1+x.^2).*((1+x.^2).*(1+x.^2.*t^2)+4.*we.*(1-x.^2.*t)+4.*we.^2))).*(1-cos(x.*bin))./x.^2;
-        covar_T(w_i, t_i) = integral(@(x) integrand(x,zeta_0,tau,xi_1_0,xi_2_0,w,T), -Inf, Inf)/(T^2);
+        covar_T(w_i, t_i) = integral(@(x) integrand(x,zeta_0,tau,xi_1_0,xi_2_0,w,T), -Inf, Inf)/(pi*T^2);
         
-        if normalize_xcorr
-            subplot(2, 1, 2)
-            if w_i==1
-                w2_1 = loglog(Ts, covar_T(w_i, :)./M_numint(w_i), 'color', colorz(w_i, :));
-            elseif w_i==length(weights)
-                w2_end = loglog(Ts, covar_T(w_i, :)./M_numint(w_i), 'color', colorz(w_i, :));
-            else
-                loglog(Ts, covar_T(w_i, :)./M_numint(w_i), 'color', colorz(w_i, :))
-            end
-            hold on
-        else
-            subplot(2, 1, 2)
-            if w_i==1
-                w2_1 = loglog(Ts, covar_T(w_i, :), 'color', colorz(w_i, :));
-            elseif w_i==length(weights)
-                w2_end = loglog(Ts, covar_T(w_i, :), 'color', colorz(w_i, :));
-            else
-                loglog(Ts, covar_T(w_i, :), 'color', colorz(w_i, :))
-            end
-            hold on
-        end
+        % diagonal ones
+        integrand2 = @(x, zeta, t, xi, we, bin) ...
+            xi*((1+x.^2).*(1+x.^2.*t^2)+2*we*(1-x.^2.*t)+2*we^2 + we^2.*zeta.*(1+x.^2))./...
+        ((1+x.^2).*((1+x.^2).*(1+x.^2.*t^2)+4.*we.*(1-x.^2.*t)+4.*we.^2)).*(1-cos(x.*bin))./x.^2;
+        psd_T(w_i, t_i) = integral(@(x) integrand2(x,zeta_0,tau,xi_0,w,T), -Inf, Inf)/(pi*T^2);
     end
+    
+    if normalize_xcorr
+        subplot(2, 2, 2)
+        if w_i==1
+            w2_1 = loglog(Ts, covar_T(w_i, :)./M_numint(w_i), 'color', colorz(w_i, :));
+        elseif w_i==length(weights)
+            w2_end = loglog(Ts, covar_T(w_i, :)./M_numint(w_i), 'color', colorz(w_i, :));
+        else
+            loglog(Ts, covar_T(w_i, :)./M_numint(w_i), 'color', colorz(w_i, :))
+        end
+        hold on
+    else
+        subplot(2, 2, 2)
+        if w_i==1
+            w2_1 = loglog(Ts, covar_T(w_i, :), 'color', colorz(w_i, :));
+        elseif w_i==length(weights)
+            w2_end = loglog(Ts, covar_T(w_i, :), 'color', colorz(w_i, :));
+        else
+            loglog(Ts, covar_T(w_i, :), 'color', colorz(w_i, :))
+        end
+        hold on
+    end
+
+    subplot(2, 2, 3)
+    if w_i==1
+        w3_1 = loglog(Ts, psd_T(w_i, :), 'color', colorz(w_i, :));
+    elseif w_i==length(weights)
+        w3_end = loglog(Ts, psd_T(w_i, :), 'color', colorz(w_i, :));
+    else
+        loglog(Ts, psd_T(w_i, :), 'color', colorz(w_i, :))
+    end
+    hold on
+
+    subplot(2, 2, 4)
+    if w_i==1
+        w4_1 = loglog(Ts, psd_T(w_i, :)-covar_T(w_i, :), 'color', colorz(w_i, :));
+    elseif w_i==length(weights)
+        w4_end = loglog(Ts, psd_T(w_i, :)-covar_T(w_i, :), 'color', colorz(w_i, :));
+    else
+        loglog(Ts, psd_T(w_i, :)-covar_T(w_i, :), 'color', colorz(w_i, :))
+    end
+    hold on
     
 end
 hold off
 
-subplot(2, 1, 1)
+figure(2);
+subplot(2, 2, 1)
 set(gca, 'yscale', 'linear')
 xlabel('\omega')
 ylabel('$\frac{1}{2} (M_1^* M_2 + M_2 M_1^*)$', 'interpreter', 'latex')
 legend([w_1, w_end], ['w=', num2str(weights(1))], ...
-    ['w=', num2str(weights(end))], 'location', 'northeast')
-subplot(2, 1, 2)
+    ['w=', num2str(weights(end))], 'location', 'southeast')
+
+subplot(2, 2, 2)
 set(gca, 'yscale', 'linear')
 xlabel('T', 'interpreter', 'latex')
 ylabel('$Cov(M_1, M_2)$', 'interpreter', 'latex')
 %ylabel('var ( $\frac{1}{T} \int_0^T M_1(t_1) dt_1 \frac{1}{T} \int_0^T M_2(t_2) dt_2 $ )', 'interpreter', 'latex')
 legend([w2_1, w2_end], ['w=', num2str(weights(1))], ...
     ['w=', num2str(weights(end))], 'location', 'southeast')
-% subplot(3, 1, 3)
-% xlabel('T', 'interpreter', 'latex')
-% ylabel('Without normalization by T^2', 'interpreter', 'latex')
-% legend([w3_1, w3_end], 'w=0', 'w=100', 'location', 'southwest')
+
+subplot(2, 2, 3)
+set(gca, 'yscale', 'linear')
+xlabel('T', 'interpreter', 'latex')
+ylabel('$ Var(M) $', 'interpreter', 'latex')
+legend([w3_1, w3_end], ['w=', num2str(weights(1))], ...
+    ['w=', num2str(weights(end))], 'location', 'northeast')
+
+subplot(2, 2, 4)
+set(gca, 'yscale', 'linear')
+xlabel('T', 'interpreter', 'latex')
+ylabel('dominant $\lambda$', 'interpreter', 'latex')
+legend([w4_1, w4_end], ['w=', num2str(weights(1))], ...
+    ['w=', num2str(weights(end))], 'location', 'northeast')
+
 hgsave(fack, ['variance_studies/psd_var', suffix,'.fig'])
 saveas(fack, ['variance_studies/psd_var', suffix,'.png'])
 
