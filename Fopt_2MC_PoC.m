@@ -8,8 +8,8 @@
 set(0,'DefaultAxesFontSize',30,'defaultaxeslinewidth',2,...
     'defaultlinelinewidth',2.,'defaultpatchlinewidth',1.5)
 
-T_final = 1000;
-inhib_strengths = 0:10:50;
+T_final = 10000;
+inhib_strengths = [0, 0.1, 0.2, 0.4, 0.6, 0.8, 1, 2, 5, 10, 20, 50]; %0:10:50;
 osn_scale = 5;
 
 connectivity_type = 'global';
@@ -20,12 +20,12 @@ Nm = 2; % number of mitral cells
 Ns = 2;
 Ng = 1;
 N = Ng+Nm;
-rp = 5; 
+rp = 0; 
 rp_timer = zeros(N, Ns);
 
 dt = 0.02;
 times = 0:dt:T_final;
-folder_name = '2MC_PoC/';
+folder_name = '2MC_PoC_norp/';
 var_of_interest = inhib_strengths;
 
 %% model parameters
@@ -54,9 +54,10 @@ for tr_i = 1:total_runs
     file_locations{tr_i} = pre_file_location;
 end
 
-weights = [10000, 5000, 10000];
+
+weights = [2000, 10000, 10000];
 Nt = round(T_final/dt)+1;
-background_noise = 0;
+background_noise = 1;
 
 if stim_type==1
     stim_widths = 0.3*Nm; 
