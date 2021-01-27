@@ -8,24 +8,25 @@
 set(0,'DefaultAxesFontSize',30,'defaultaxeslinewidth',2,...
     'defaultlinelinewidth',2.,'defaultpatchlinewidth',1.5)
 
-T_final = 10000;
+num_copies = 20;
+T_final = 20000;
 inhib_strengths = [0, 0.1, 0.2, 0.4, 0.6, 0.8, 1, 2, 5, 10, 20, 50]; %0:10:50;
 osn_scale = 5;
 
-connectivity_type = 'global';
+connectivity_type = 'single';
 stim_type = 1;
 
 % model parameters
 Nm = 2; % number of mitral cells
 Ns = 2;
-Ng = 1;
+Ng = 2;
 N = Ng+Nm;
 rp = 0; 
 rp_timer = zeros(N, Ns);
 
 dt = 0.02;
 times = 0:dt:T_final;
-folder_name = '2MC_PoC_norp/';
+folder_name = '2MC_PoC_norp_single/';
 var_of_interest = inhib_strengths;
 
 %% model parameters
@@ -45,7 +46,8 @@ Vmax = 30.4; % threshold potential after a spike (mV)
 mc_tau_x = 5; gc_tau_x = 5; osn_tau_x = 1;
 tau_x = [mc_tau_x*ones(Nm, Ns); gc_tau_x*ones(Ng, Ns)];
 
-total_runs = length(inhib_strengths);
+total_runs = length(inhib_strengths)*num_copies;
+file_locations = cell(total_runs, 1);
 for tr_i = 1:total_runs
     % do we want to save results to file?
         run_number = dlmread('run_num_network.txt');
@@ -53,7 +55,6 @@ for tr_i = 1:total_runs
         [~, pre_file_location] = save_results(run_number, folder_name);
     file_locations{tr_i} = pre_file_location;
 end
-
 
 weights = [2000, 10000, 10000];
 Nt = round(T_final/dt)+1;
@@ -66,11 +67,12 @@ if stim_type==1
 %     stim_means = [floor(stim_center-0.2*Nm), ceil(stim_center+0.2*Nm)];
         
     S = shift_gaussians(Nm, stim_widths, stim_means, background_noise);
-end
 
 % n o r m a l i z e 
 S= Nm*100*S/sum(S(:)) ;
-
+elseif stim_type==2
+	S = [65.3130, 34.6870; 65.3130, 34.6870];
+end
 
 for vr_i = 1:length(inhib_strengths) %size(variable_run, 2)
     
@@ -83,6 +85,9 @@ for vr_i = 1:length(inhib_strengths) %size(variable_run, 2)
     if strcmp(connectivity_type, 'global')
             Wmg = wMG*ones(Ng, Nm)/Nm;
             Wgm = wGM*ones(Nm, Ng)/Nm;
+    elseif strcmp(connectivity_type, 'single')
+        Wmg = wMG*eye(Ng)/Nm;
+        Wgm = wGM*eye(Ng)/Nm;
     end
     
     % as a sanity check, it's good to make sure the weights are what you
@@ -97,8 +102,8 @@ for vr_i = 1:length(inhib_strengths) %size(variable_run, 2)
     osn_rate_adjusted = dt*osn_rate/1000; % expected rate per time step
     osn_spontaneous_adjusted = osn_spontaneous*dt/1000;
     
-        
-        file_location = file_locations{vr_i};
+       for r_i = 1:num_copies 
+        file_location = file_locations{(vr_i-1)*num_copies + r_i};
         
         %% initialize things
         % THINGS YOU NEED REGARDLESS
@@ -166,7 +171,7 @@ for vr_i = 1:length(inhib_strengths) %size(variable_run, 2)
         
         save([file_location, 'data.mat'], 'Mitral_spike_history', ...
             'Granule_spike_history');
-
+	end
 end
 
 
