@@ -8,11 +8,10 @@
 % done
 
 % dirs = {'single_mix/', 'global_mix/', 'stim_mix/', 'mex_mix/'};
-dirs = {'single_mix_explore_more/'};
-
+dirs = {'NN_GLOBAL_TEST/'};
 
 am_i_on_quest = 1;
-the_frills = 0; % everything beyond Fopt, PC, MC FRs
+the_frills = 1; % everything beyond Fopt, PC, MC FRs
 bool_spectra = 1;
 bool_projmean = 1;
 
@@ -20,9 +19,9 @@ set(0, 'DefaultFigureVisible', 'on')
 set(0,'DefaultAxesFontSize',30,'defaultaxeslinewidth',2,...
     'defaultlinelinewidth',2.,'defaultpatchlinewidth',1.5)
 
-num_copies = 50; % number of spiking datasets per parameter
-inhib_strengths = 0:100:1000; % for all types of connectivity
-windows = 5:5:200;
+num_copies = 10; % number of spiking datasets per parameter
+inhib_strengths = 0:0.1:1; % for all types of connectivity
+windows = 5:5:100;
 Nm = 50;
 % osn_scales = 5;
 var_of_interest = inhib_strengths;
@@ -37,17 +36,17 @@ itv = 600; % to save this amount
 
 % number of data points for LDA
 % i.e. number of random windows to take
-num_samples = 200;
+num_samples = 100;
 
 assert(num_samples>= Nm);
 % else the covariance matrix is guaranteed singular
 
 % number of times to run this, to smooth things out
-num_runs = 1;
+num_runs = 100;
 
 for reg = dirs
     
-    target_dir = ['AdExIF/', reg{1}];
+    target_dir = ['Noisy_Neuron/', reg{1}];
     files = dir(target_dir);
     directoryNames = {files([files.isdir]).name};
     directoryNames = directoryNames(~ismember(directoryNames,{'.','..'}));
@@ -58,10 +57,11 @@ for reg = dirs
     pc_opt = zeros(size(F_opt));
     mc_frs_1 = zeros(Nm, length(var_of_interest), num_copies);
     mc_frs_2 = zeros(Nm, length(var_of_interest), num_copies);
-
+    
+    avg_covsum = zeros(2, Nm, Nm, length(var_of_interest), length(windows));
+    
     if bool_spectra
         covsum_evalues = zeros(2, Nm, length(var_of_interest), length(windows), num_copies*num_runs);
-        covsum_evecs = NaN(2, Nm, Nm, length(var_of_interest), length(windows), num_copies*num_runs);
     end
     
     if bool_projmean
@@ -115,6 +115,8 @@ for reg = dirs
         for w_i = 1:length(windows)
             wdow = windows(w_i);
             window_steps = round(wdow/dt)-1;
+            
+            counter = 1;
 
                 % it's better practice for num_runs to be 1 and the dataset 
                 % to be large so as to avoid resampling
@@ -206,7 +208,8 @@ for reg = dirs
                     [vals_s, ind] = sort(diag(vals));
                     vecs = vecs(:, ind);
                     covsum_evalues(1, 1:length(channel_keep_mc), i_i, w_i, (ii_i-1)*num_runs + r_i) = vals_s/wdow;
-                    covsum_evecs(1, 1:length(channel_keep_mc), 1:length(channel_keep_mc), i_i, w_i, (ii_i-1)*num_runs + r_i) = vecs;
+%                     current = covsum_evecs(1, :, :, i_i, w_i);
+%                     covsum_evecs(1, 1:length(channel_keep_mc), 1:length(channel_keep_mc), i_i, w_i) = ((counter-1)*current+vecs)/counter;
                 end
 
                 if bool_projmean
@@ -214,6 +217,7 @@ for reg = dirs
                 end
                 
                 if the_frills
+                    avg_covsum(1, :, :, i_i, w_i) = (squeeze(avg_covsum(1, :, :, i_i, w_i))*(counter-1) + cov_poiss)/counter;
 
                     for mode_i = 1:length(channel_keep_mc)
                         mc_i = channel_keep_mc(mode_i);
@@ -227,7 +231,7 @@ for reg = dirs
                 end
 
                 % netw
-                diff_means = mean(stim1, 2)-mean(stim2, 2); % avg spike count
+                diff_means = mean(stim1, 2)-mean(stim2, 2);
                 cov_sum = cov(stim1')+cov(stim2');
                 w = cov_sum\diff_means;
                 c = dot(w, (stim1_mean+stim2_mean))/2;
@@ -242,7 +246,6 @@ for reg = dirs
                     [vals_s, ind] = sort(diag(vals));
                     vecs = vecs(:, ind);
                     covsum_evalues(2, 1:length(channel_keep_mc), i_i, w_i, (ii_i-1)*num_runs + r_i) = vals_s/wdow;
-                    covsum_evecs(2, 1:length(channel_keep_mc), 1:length(channel_keep_mc), i_i, w_i, (ii_i-1)*num_runs + r_i) = vecs;
                 end
                 
                 if bool_projmean
@@ -250,7 +253,9 @@ for reg = dirs
                 end
 
                 if the_frills
-
+                    avg_covsum(2, :, :, i_i, w_i) = (squeeze(avg_covsum(2, :, :, i_i, w_i))*(counter-1) + cov_sum)/counter;
+                    counter = counter + 1;
+                    
                     for mode_i = 1:length(channel_keep_mc)
                         mc_i = channel_keep_mc(mode_i);
                         Fopt_mode(2, mode_i, i_i, w_i, (ii_i-1)*num_runs + r_i) = ...
@@ -308,21 +313,22 @@ for reg = dirs
 
     end
 
+	%covsum_evecs = squeeze(nanmean(covsum_evecs, 6));
     % corrcoefs is Nm x Nm x inhibs x windows x num_copies
     % covsum_evalues is Nm x inhibs x windows x num_copies
 
     save(strcat(target_dir, 'LDA.mat'), 'F_opt', 'pc_opt', 'mc_frs_1', ...
         'mc_frs_2')
     if bool_spectra
-        save(strcat(target_dir, 'Spectra.mat'), 'covsum_evalues', 'covsum_evecs')
+        save(strcat(target_dir, 'Spectra.mat'), 'covsum_evalues')
     end
     if bool_projmean
         save(strcat(target_dir, 'projmean.mat'), 'diff_means_proj')
     end
     if the_frills
         save(strcat(target_dir, 'sample_data.mat'), 'sample_data')
-        save(strcat(target_dir, 'Frills.mat'), 'corrcoefs', 'diff_mean_vector', 'diff_means_proj', ...
-            'covsum_evalues', 'covsum_evecs', 'Fopt_mode', 'Fopt_mc')
+        save(strcat(target_dir, 'Frills.mat'), 'corrcoefs', 'avg_covsum', 'diff_mean_vector', 'diff_means_proj', ...
+            'covsum_evalues', 'Fopt_mode', 'Fopt_mc')
     end
 
 end
