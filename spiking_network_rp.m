@@ -10,21 +10,21 @@ set(0,'DefaultAxesFontSize',30,'defaultaxeslinewidth',2,...
     'defaultlinelinewidth',2.,'defaultpatchlinewidth',1.5)
 
 %% THINGS WE CHANGE FOR TROUBLESHOOTING
-runs = 1; % number of copies per parameter
-T_final = 1000; % in milliseconds
-inhib_strengths = 50; % 0:5:50; %0:50:1000; %[0, 0.4]; %0:50:1000; %:0.1:1;
+runs = 50; % number of copies per parameter
+T_final = 10000; % in milliseconds
+inhib_strengths = [0, 1, 5, 10, 20, 50, 75]; %0:50:1000; %[0, 0.4]; %0:50:1000; %:0.1:1;
 osn_scales = 5; %1:10; % times the freq and reduce height of xbar
 scale_both = 0; % if excit strength should scale too
 
-connectivity_type = 'mex'; % global % stim % mex
-stim_type = 4; % 1 = shifted gauss, 2 = skewed gausss, % 4 = mixtures
+connectivity_type = 'global'; % global % stim % mex
+stim_type = 4; % 1 = shifted gauss, 2 = skewed gauss, % 4 = mixtures
 if stim_type==4
     mix_stretch = 0.2; %0:0.1:0.5; % dist from center, default is 0.15
 end
 sniff = 0;
 weight_noise = 1; % want noise in weight matrices?
 
-am_i_on_quest = 0;
+am_i_on_quest = 1;
 
 Nm = 50; % number of mitral cells
 Ns = 2; % number of stimuli
@@ -38,7 +38,7 @@ rp_timer = zeros(N, Ns);
 
 dt = 0.02;
 times = 0:dt:T_final;
-folder_name = 'mex_troubleshoot/';
+folder_name = 'global_mix_smaller_inhibs/';
 var_of_interest = inhib_strengths;
 osn_scale = osn_scales(1);
 
@@ -160,7 +160,7 @@ end
 % n o r m a l i z e 
 S = Nm*100*S/sum(S(:));
 
-for vr_i = 1:length(var_of_interest) %size(variable_run, 2)
+for vr_i = length(var_of_interest) %size(variable_run, 2)
     
 %     osn_scale = var_of_interest(vr_i);
     inhib_strength = var_of_interest(vr_i);
@@ -189,11 +189,11 @@ for vr_i = 1:length(var_of_interest) %size(variable_run, 2)
         
         fprintf(strcat('Run', num2str(r_i), '\n'))
         
-        stream = RandStream('mt19937ar','Seed', r_i);
-        RandStream.setGlobalStream(stream);
-        
-        file_location = file_locations{(vr_i-1)*runs+r_i};
-        
+	file_location = file_locations{(vr_i-1)*runs+r_i};
+	if mod(r_i, 2)==1
+		stream = RandStream('mt19937ar', 'Seed', (r_i+1)/2);
+        	RandStream.setGlobalStream(stream);
+	
         %% NOISE
 %         spont_rate = 10; %Hz
 %         stim_latencies = 20*(100 - floor(S+5*randn(size(S)))); % countssss
@@ -289,7 +289,9 @@ for vr_i = 1:length(var_of_interest) %size(variable_run, 2)
             Wmg = Wmg.*(rand(Nm)>0.1);
             Wgm = Wgm.*(rand(Nm)>0.1);
         end
-        
+       
+	end
+ 
         %% initialize things
         % THINGS YOU NEED REGARDLESS
         % but initialize them as zeros instead of NaNs
@@ -307,7 +309,9 @@ for vr_i = 1:length(var_of_interest) %size(variable_run, 2)
         Hyp = zeros(size(Voltage)); % w_ad, hyperpolarization current
         Dep = zeros(size(Voltage)); % after-spike depolarization current
         VT = Vthresh*ones(size(Voltage));
-        
+ 
+	rp_timer = zeros(N, Ns);
+       
         %%%%%%%%%%% START %%%%%%%%%%%
         fprintf('Running......\n');
         
